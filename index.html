@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Gallery Viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="tab-bar" id="tabBar">
+        <div class="add-tab">+</div>
+        <div class="file-info" id="fileInfo"></div>
+        <div class="info-button" id="infoButton">?</div>
+    </div>
+
+    <div class="container">
+        <div class="preview-section" id="previewSection">
+            <div class="empty-state" id="emptyState">
+                <div style="font-size: 48px; margin-bottom: 20px;">📁</div>
+                <div>No gallery selected</div>
+                <button class="browse-button">Create Gallery</button>
+                <br>
+                <div style="text-align:center; font-style:italic; font-size:14px;filter: opacity(0.5);"><b>INFO</b>: If
+                    you have issues
+                    after reload<br>
+                    please active "Allow on every visit" from "File Editing"<br>
+                    from Address Bar Settings Icon left to the URL<br>
+                    after you create your first Gallery.
+                </div>
+            </div>
+            <div class="media-container" id="mediaContainer" style="display: none;">
+                <img class="media-item" id="mediaPreview" style="display: none;" draggable="false">
+                <video class="media-item" id="videoPreview" style="display: none;" loop></video>
+                <div class="video-controls" id="videoControls" style="display: none;">
+                    <div id="progressBar">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button class="random-button" id="randomButton" style="display: none;">🎲</button>
+        </div>
+        <div class="thumbnails-section">
+            <div class="thumbnail-grid" id="thumbnailGrid"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="newGalleryModal">
+        <div class="modal-content">
+            <div class="modal-title">Create New Gallery</div>
+            <div class="input-group">
+                <label>Gallery Name</label>
+                <input type="text" id="galleryName" placeholder="Enter gallery name">
+            </div>
+            <div class="input-group">
+                <label>Select Folder</label>
+                <button class="modal-button browse-folder">Browse Folder</button>
+                <div id="selectedPath" style="margin-top: 8px; font-size: 12px; color: #666;"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-button close">Cancel</button>
+                <button class="modal-button primary">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="infoModal">
+        <div class="modal-content">
+            <div class="modal-title">Help</div>
+            <div class="modal-body">
+                <h3>Mouse Controls</h3>
+                <ul>
+                    <li><b>Left Click:</b> Drag to pan the image.</li>
+                    <li><b>Right Click + Drag:</b> Zoom in/out (image) or seek (video).</li>
+                    <li><b>Mouse Wheel:</b> Navigate between images/videos.</li>
+                </ul>
+                <h3>Keyboard Hotkeys</h3>
+                <ul>
+                    <li><b>Arrow Left/Right:</b> Navigate between images/videos.</li>
+                    <li><b>R:</b> Toggle random mode.</li>
+                    <li><b>Spacebar:</b> Play/pause video.</li>
+                </ul>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-button info-close">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading" id="loadingIndicator" style="display: none;">
+        Loading media files...
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
