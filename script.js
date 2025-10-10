@@ -554,8 +554,11 @@ class App {
         document.getElementById('infoButton').addEventListener('click', this.showInfoModal.bind(this));
         document.querySelector('.info-close').addEventListener('click', this.closeInfoModal.bind(this));
     }
-
+    delta = 0;
     handleWheel(e) {
+        let now = Date.now();
+        if (now - this.delta < 100) return;
+        this.delta = now;
         e.preventDefault();
         const mediaPreview = document.getElementById('mediaPreview');
         const videoPreview = document.getElementById('videoPreview');
