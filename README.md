@@ -1,7 +1,7 @@
 # Modern Gallery Viewer
 
 A simple, modern, and elegant gallery viewer for your local images and videos.
-## 🔗 Check out [Gallery Pro](https://far-se.github.io/gallery-pro)
+## 🔗 Check out [Gallery Pro on Netlify](https://gallery-pro.netlify.app/) or [Gallery Pro on GitHub](https://far-se.github.io/gallery-pro)
 ![Modern Gallery Viewer](screenshot.jpg)
 
 ## Features
