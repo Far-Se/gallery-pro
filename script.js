@@ -33,7 +33,10 @@ class GalleryDB {
         const galleryData = {
             id: gallery.id,
             name: gallery.name,
-            directoryHandle: gallery.directoryHandle
+            directoryHandle: gallery.directoryHandle,
+            isShuffled: gallery.isShuffled
+            ,
+            order: gallery.order
         };
         await store.put(galleryData);
     }
@@ -71,11 +74,16 @@ class GalleryManager {
                 this.showLoading(true);
             }
 
+            // sort stored galleries by saved order (if present)
+            storedGalleries.sort((a, b) => (a.order || 0) - (b.order || 0));
+
             for (const storedGallery of storedGalleries) {
                 const hasPermission = await this.verifyPermission(storedGallery.directoryHandle);
 
                 if (hasPermission) {
                     const gallery = new Gallery(storedGallery.id, storedGallery.name, storedGallery.directoryHandle);
+                    gallery.isShuffled = storedGallery.isShuffled || false;
+                    gallery.order = storedGallery.order || 0;
                     await gallery.loadMedia();
                     this.galleries.push(gallery);
                     this.addGalleryTab(gallery, this.galleries.length - 1);
@@ -99,6 +107,8 @@ class GalleryManager {
         this.showLoading(true);
 
         const gallery = new Gallery(Date.now(), name, directoryHandle);
+        // set order to end of list
+        gallery.order = this.galleries.length;
         await gallery.loadMedia();
 
         await this.db.saveGallery(gallery);
@@ -159,6 +169,17 @@ class GalleryManager {
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('mediaContainer').style.display = 'flex';
             document.getElementById('randomButton').style.display = 'flex';
+
+            // Restore shuffle button state
+            const shuffleButton = document.getElementById('shuffleButton');
+            if (gallery.isShuffled) {
+                shuffleButton.classList.add('active');
+                shuffleButton.setAttribute('title', 'Unshuffle Gallery');
+            } else {
+                shuffleButton.classList.remove('active');
+                shuffleButton.setAttribute('title', 'Shuffle Gallery');
+            }
+
             this.displayThumbnails(gallery);
             this.displayMedia(0);
         } else {
@@ -354,7 +375,7 @@ class GalleryManager {
         e.target.classList.remove('drag-over');
     }
 
-    handleTabDrop(e) {
+    async handleTabDrop(e) {
         if (e.stopPropagation) {
             e.stopPropagation();
         }
@@ -373,6 +394,20 @@ class GalleryManager {
                 this.activeGalleryIndex--;
             } else if (this.draggedTabIndex > this.activeGalleryIndex && targetIndex <= this.activeGalleryIndex) {
                 this.activeGalleryIndex++;
+            }
+
+            // update order values and persist to DB
+            this.galleries.forEach((g, idx) => {
+                g.order = idx;
+            });
+
+            try {
+                // save all galleries order to DB
+                for (const g of this.galleries) {
+                    await this.db.saveGallery(g);
+                }
+            } catch (err) {
+                console.error('Error saving gallery order:', err);
             }
 
             this.rebuildTabs();
@@ -410,8 +445,15 @@ class GalleryManager {
     }
 
     applyTransform() {
+        const videoPreview = document.getElementById('videoPreview');
         const mediaPreview = document.getElementById('mediaPreview');
-        mediaPreview.style.transform = `translate(${this.translateX}px, ${this.translateY}px) scale(${this.scale})`;
+        let element = 0;
+        if (videoPreview.style.display !== 'none') {
+            element = videoPreview;
+        } else {
+            element = mediaPreview;
+        }
+        element.style.transform = `translate(${this.translateX}px, ${this.translateY}px) scale(${this.scale})`;
     }
 }
 
@@ -421,6 +463,7 @@ class Gallery {
         this.name = name;
         this.directoryHandle = directoryHandle;
         this.media = [];
+        this.isShuffled = false;
     }
 
     async loadMedia() {
@@ -454,6 +497,14 @@ class Gallery {
             }
 
             this.media.sort((a, b) => b.lastModified - a.lastModified);
+
+            // If gallery is in shuffle mode, shuffle the media after loading
+            if (this.isShuffled) {
+                for (let i = this.media.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [this.media[i], this.media[j]] = [this.media[j], this.media[i]];
+                }
+            }
 
             console.log(`Loaded ${this.media.length} media files from "${this.name}" (including subdirectories)`);
         } catch (err) {
@@ -536,6 +587,11 @@ class App {
         previewSection.addEventListener('contextmenu', e => e.preventDefault());
         previewSection.addEventListener('mousedown', this.handleMouseDown.bind(this));
         previewSection.addEventListener('wheel', this.handleWheel.bind(this));
+        // allow dragging files/links into the preview area and show visual feedback
+        previewSection.addEventListener('dragover', e => e.preventDefault());
+        previewSection.addEventListener('dragenter', this.handleDragEnter.bind(this));
+        previewSection.addEventListener('dragleave', this.handleDragLeave.bind(this));
+        previewSection.addEventListener('drop', this.handleDrop.bind(this));
         document.addEventListener('mousemove', this.handleMouseMove.bind(this));
         document.addEventListener('mouseup', this.handleMouseUp.bind(this));
 
@@ -545,6 +601,9 @@ class App {
 
         document.addEventListener('keydown', this.handleKeyboard.bind(this));
 
+        // handle paste events (images/videos from clipboard)
+        document.addEventListener('paste', this.handlePaste.bind(this));
+
         document.querySelector('.add-tab').addEventListener('click', this.showNewGalleryModal.bind(this));
         document.querySelector('.browse-button').addEventListener('click', this.showNewGalleryModal.bind(this));
         document.querySelector('.modal-button.primary').addEventListener('click', this.createGallery.bind(this));
@@ -552,6 +611,7 @@ class App {
         document.querySelector('.modal-button.browse-folder').addEventListener('click', this.selectFolder.bind(this));
         document.querySelector('#randomButton').addEventListener('click', this.toggleRandomMedia.bind(this));
         document.getElementById('infoButton').addEventListener('click', this.showInfoModal.bind(this));
+        document.getElementById('shuffleButton').addEventListener('click', this.shuffleGallery.bind(this));
         document.querySelector('.info-close').addEventListener('click', this.closeInfoModal.bind(this));
     }
     delta = 0;
@@ -602,6 +662,34 @@ class App {
             if (newIndex >= gallery.media.length) newIndex = 0;
             this.galleryManager.displayMedia(newIndex);
         }
+    }
+    async shuffleGallery() {
+        const gallery = this.galleryManager.galleries[this.galleryManager.activeGalleryIndex];
+        if (!gallery || gallery.media.length === 0) return;
+
+        // Toggle shuffle state
+        gallery.isShuffled = !gallery.isShuffled;
+
+        // Update visual feedback
+        const shuffleButton = document.getElementById('shuffleButton');
+        if (gallery.isShuffled) {
+            shuffleButton.classList.add('active');
+            // Shuffle the media array
+            for (let i = gallery.media.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [gallery.media[i], gallery.media[j]] = [gallery.media[j], gallery.media[i]];
+            }
+        } else {
+            shuffleButton.classList.remove('active');
+            // Restore original sort order (by lastModified)
+            gallery.media.sort((a, b) => b.lastModified - a.lastModified);
+        }
+
+        // Save the updated gallery state to database
+        await this.db.saveGallery(gallery);
+
+        this.galleryManager.displayThumbnails(gallery);
+        this.galleryManager.displayMedia(0);
     }
 
     toggleRandomMedia() {
@@ -654,18 +742,12 @@ class App {
             this.galleryManager.translateY = e.clientY - this.startY;
             this.galleryManager.applyTransform();
         } else if (this.isRightMouseDown) {
-            const videoPreview = document.getElementById('videoPreview');
-            const mediaPreview = document.getElementById('mediaPreview');
 
-            if (videoPreview.style.display !== 'none') {
-                const deltaX = e.clientX - this.lastMouseX;
-                videoPreview.currentTime += deltaX / 110;
-            } else if (mediaPreview.style.display !== 'none') {
-                const deltaY = e.clientY - this.lastMouseY;
-                this.galleryManager.scale -= deltaY / 100;
-                this.galleryManager.scale = Math.min(Math.max(this.galleryManager.scale, 0.5), 5);
-                this.galleryManager.applyTransform();
-            }
+            const deltaY = e.clientY - this.lastMouseY;
+            this.galleryManager.scale -= deltaY / 100;
+            this.galleryManager.scale = Math.min(Math.max(this.galleryManager.scale, 0.5), 5);
+            this.galleryManager.applyTransform();
+
 
             this.lastMouseX = e.clientX;
             this.lastMouseY = e.clientY;
@@ -683,6 +765,7 @@ class App {
     }
 
     handleKeyboard(e) {
+        if (document.querySelector('#newGalleryModal.active')) return;
         if (this.galleryManager.activeGalleryIndex === -1) return;
 
         switch (e.key) {
@@ -744,7 +827,7 @@ class App {
         await this.galleryManager.createGallery(name, this.selectedDirectoryHandle);
     }
 
-    togglePlayPause() {
+    togglePlayPause(e) {
         const video = document.getElementById('videoPreview');
         if (video.paused) {
             video.play();
@@ -766,6 +849,127 @@ class App {
         const rect = progressBar.getBoundingClientRect();
         const percent = (e.clientX - rect.left) / rect.width;
         video.currentTime = percent * video.duration;
+    }
+
+    // Handle files dropped into the preview area
+    async handleDrop(e) {
+        e.preventDefault();
+        // reset drag visual state
+        this.dragCounter = 0;
+        const preview = document.getElementById('previewSection');
+        preview.classList.remove('drop-target');
+
+        const dt = e.dataTransfer;
+        // 1) Save any files that were dropped
+        const files = Array.from(dt.files || []);
+        for (const file of files) {
+            try {
+                await this.saveFileToActiveGallery(file);
+            } catch (err) {
+                console.error('Failed to save dropped file:', err);
+                alert('Failed to save file: ' + (file.name || 'unknown'));
+            }
+        }
+
+        // Refresh gallery view if anything was saved
+        const gallery = this.galleryManager.galleries[this.galleryManager.activeGalleryIndex];
+        if (gallery) {
+            await gallery.loadMedia();
+            this.galleryManager.displayThumbnails(gallery);
+            this.galleryManager.displayMedia(0);
+        }
+    }
+
+    handleDragEnter(e) {
+        e.preventDefault();
+        this.dragCounter = (this.dragCounter || 0) + 1;
+        const preview = document.getElementById('previewSection');
+        preview.classList.add('drop-target');
+    }
+
+    handleDragLeave(e) {
+        e.preventDefault();
+        this.dragCounter = (this.dragCounter || 0) - 1;
+        if (this.dragCounter <= 0) {
+            this.dragCounter = 0;
+            const preview = document.getElementById('previewSection');
+            preview.classList.remove('drop-target');
+        }
+    }
+
+    // Fetch a URL and save it into the active gallery (if it's an image/video)
+
+
+    // Handle paste (clipboard) events
+    async handlePaste(e) {
+        if (!e.clipboardData) return;
+
+        const items = Array.from(e.clipboardData.items || []);
+        const files = [];
+
+        for (const item of items) {
+            if (item.kind === 'file') {
+                const file = item.getAsFile();
+                if (file) files.push(file);
+            }
+        }
+
+        if (files.length === 0) return;
+
+        for (const file of files) {
+            try {
+                await this.saveFileToActiveGallery(file);
+            } catch (err) {
+                console.error('Failed to save pasted file:', err);
+                alert('Failed to save pasted file');
+            }
+        }
+
+        const gallery = this.galleryManager.galleries[this.galleryManager.activeGalleryIndex];
+        if (gallery) {
+            await gallery.loadMedia();
+            this.galleryManager.displayThumbnails(gallery);
+            this.galleryManager.displayMedia(0);
+        }
+    }
+
+    // Save a File object into the active gallery directory with a generated name
+    async saveFileToActiveGallery(file) {
+        const gallery = this.galleryManager.galleries[this.galleryManager.activeGalleryIndex];
+        if (!gallery) throw new Error('No active gallery selected');
+
+        // Ensure we have write permission
+        const hasPerm = await gallery.verifyPermission(gallery.directoryHandle, true);
+        if (!hasPerm) throw new Error('Write permission denied for gallery directory');
+
+        const ext = this.getExtensionFromFileName(file.name) || this.getExtensionFromMime(file.type) || 'bin';
+        const prefix = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file';
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `${prefix}${timestamp}.${ext}`;
+
+        try {
+            const handle = await gallery.directoryHandle.getFileHandle(filename, { create: true });
+            const writable = await handle.createWritable();
+            // If file is a Blob/File, write it directly
+            await writable.write(file);
+            await writable.close();
+        } catch (err) {
+            console.error('Error writing file to directory:', err);
+            throw err;
+        }
+    }
+
+    getExtensionFromFileName(name) {
+        if (!name || name.indexOf('.') === -1) return null;
+        return name.split('.').pop().toLowerCase();
+    }
+
+    getExtensionFromMime(mime) {
+        if (!mime || !mime.includes('/')) return null;
+        const subtype = mime.split('/')[1].split('+')[0];
+        // map common types
+        const map = { jpeg: 'jpg', png: 'png', webp: 'webp', gif: 'gif', mp4: 'mp4', webm: 'webm', 'x-matroska': 'mkv', quicktime: 'mov' };
+        return map[subtype] || subtype;
     }
 }
 
