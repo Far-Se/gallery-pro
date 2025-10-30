@@ -474,14 +474,12 @@ video.media-item {
 /* Loading Indicator */
 .loading {
     position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    bottom: 0px;
+    right: 0px;
     color: #aaa;
     font-size: 14px;
     background: #1a1a1a;
-    padding: 20px 40px;
-    border-radius: 8px;
+    padding: 10px 30px;
     border: 1px solid #3a3a3a;
     z-index: 2000;
 }
